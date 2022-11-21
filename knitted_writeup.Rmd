@@ -1,0 +1,122 @@
+---
+title: "STAT0032 ICA 1"
+author: "Ian"
+date: "2022-11-21"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup & read data & load libraries, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/iantan/OneDrive - University College London/Postgrad/Masters/MSc DS/Modules /STAT0032/Group project/")
+getwd()
+data <- read.csv("Bike-Sharing-Dataset/hour.csv")
+
+library(tidyverse)
+library(kableExtra)
+```
+
+## Task 1: A Study of the distribution of bike hires during peak commute times in the evening 
+
+- We are focused on Spring and Summer
+
+  - will filter accordingly, based on TfL's official evening hours: between 16:00 and 19:00 on Weekdays (source: tfl.gov.uk)
+
+  - naturally, we will filter for working days as this gives meaning to the peak commute times focus
+  
+  - from `r names(data)`, we will only use season, cnt, workingday for the subsetting
+
+```{r filtering the relevant data}
+## Both seasons, working days, evenings 
+peak_commute_evening <- data %>% filter(season == 2 | season == 3) %>% filter(workingday == 1) %>% filter(is.element(hr,(16:19)))
+
+pce_summer <- peak_commute_evening %>% filter(season == 3)
+pce_spring <- peak_commute_evening %>% filter(season == 2)
+```
+
+## Basic visualisation
+
+Before diving into the quantitative tests, it would be good to have a look at the univariate plots to examine the distribution:
+
+```{r pressure, echo=FALSE}
+peak_commute_evening %>%  
+  select(cnt, season)%>% ggplot(aes(x = cnt)) + 
+  geom_histogram(aes(y = ..density..),col = "red") +
+  facet_wrap(~season) +
+  ggtitle("Spring and summer respectively", subtitle = "Spring = 2, Summer = 3") +
+  xlab("Count")
+
+## 1.2 Overlaid
+peak_commute_evening %>%  
+  select(cnt, season)%>% ggplot(aes(x = cnt, fill = as.factor(season))) + 
+  geom_histogram(aes(y = ..density..)) +
+  xlab("Count") +
+  ggtitle("Overlaid", subtitle = "Spring = 2, Summer = 3") +
+  labs(fill = "Season")
+
+```
+
+Analysis 
+
+- we can see that summer distribution looks more like a bimodal normal rather than a 'normal' normal distribution with a single mode
+
+- this will give us more insight when we run the quantitative tests below
+
+## Testing 
+
+We look for test for the following hypothesis formulation
+
+$H0: Y_i \sim N( \mu, \sigma)$
+$H1: Y_i \sim N( \mu, \sigma)$ ## not sure how to write this  
+
+### 1. Lillefors Test 
+
+- Adapted from Kolmogorov Smirnov test of goodness of fit for normality, but when the mean and variance are estimated from the data instead of given 
+
+- Methodolodgy : finds the difference between the empirical CDF and the theoretical CDF of the normal distribution using the estimated mean and variance from the data, and assesses the maximum discrepancy (source: https://en.wikipedia.org/wiki/Lilliefors_test)
+
+```{r Lillefors test (test 1)}
+library(nortest)
+l1<- lillie.test(pce_spring$cnt)
+l2 <- lillie.test(pce_summer$cnt)
+l1; l2
+```
+
+### 2. Shapiro Wilk Test 
+
+```{r Shapiro Wilk test (test 2)}
+s1 <- shapiro.test(pce_spring$cnt)
+s2 <- shapiro.test(pce_summer$cnt)
+s1; s2
+```
+
+### 3. Anderson-Darling
+
+```{r AD test (test 2)}
+a1 <- ad.test(pce_spring$cnt)
+a2 <- ad.test(pce_spring$cnt)
+a1; a2
+```
+
+```{r}
+pvaluetable <- data.frame(row.names = c("Spring", "Summer"),
+          Lillefors = c(l1$p.value, l2$p.value), 
+          Shapiro = c(s1$p.value,s2$p.value), 
+          AD = c(a1$p.value, a2$p.value))
+pvaluetable
+```
+
+
+### Power Analysis 
+
+Power analysis
+Monte Carlo simulation has found that Shapiro–Wilk has the best power for a given significance, followed closely by Anderson–Darling when comparing the Shapiro–Wilk, Kolmogorov–Smirnov, and Lilliefors.(Source: Wikipedia)
+
+### Bonferroni correction
+
+Due to multiple testing, we end up with a higher chance of committing a type 1 error (rejecting when H0 is true) if we use the same significance level, hence we divide up the alpha by 3 for each of the test. 
+
+If $\alpha$ = 0.05, `r 0|.05/3` will be the individual test $\alpha$.
+
+However, due to the small p values from all our test (largest is for Lillefors 0.014 < 0.016), this is not an issue, and we still reject all null hypothesises. 
